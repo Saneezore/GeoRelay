@@ -13,27 +13,49 @@ import java.util.*;
 
 public final class ShareActivity extends Activity {
     private TextView message;
-    private File output;
+    private final ArrayList<File> outputs = new ArrayList<>();
     @Override public void onCreate(Bundle saved) {
         super.onCreate(saved);
         LinearLayout root = new LinearLayout(this); root.setOrientation(LinearLayout.VERTICAL); root.setPadding(32, 80, 32, 32);
         message = new TextView(this); message.setTextSize(18); message.setText("Preparing image…"); root.addView(message);
-        Button cancel = new Button(this); cancel.setText("Close"); cancel.setStateListAnimator(null); cancel.setOnClickListener(v -> finish()); root.addView(cancel); setContentView(root);
-        if (!Intent.ACTION_SEND.equals(getIntent().getAction())) { message.setText("Share a JPEG image to GeoRelay from another app."); return; }
-        Uri uri = Build.VERSION.SDK_INT >= 33 ? getIntent().getParcelableExtra(Intent.EXTRA_STREAM, Uri.class) : getIntent().getParcelableExtra(Intent.EXTRA_STREAM);
-        if (uri == null || !"content".equals(uri.getScheme())) { message.setText("The source app did not provide a readable image."); return; }
+        Button cancel = new Button(this); cancel.setText("Close"); cancel.setStateListAnimator(null); cancel.setOnClickListener(v -> finish()); root.addView(cancel); ScrollView scroll = new ScrollView(this); scroll.addView(root); setContentView(scroll);
+        ArrayList<Uri> inputs = new ArrayList<>();
+        if (Intent.ACTION_SEND_MULTIPLE.equals(getIntent().getAction())) {
+            ArrayList<Uri> streams = Build.VERSION.SDK_INT >= 33
+                ? getIntent().getParcelableArrayListExtra(Intent.EXTRA_STREAM, Uri.class)
+                : getIntent().getParcelableArrayListExtra(Intent.EXTRA_STREAM);
+            if (streams != null) inputs.addAll(streams);
+        } else if (Intent.ACTION_SEND.equals(getIntent().getAction())) {
+            Uri uri = Build.VERSION.SDK_INT >= 33 ? getIntent().getParcelableExtra(Intent.EXTRA_STREAM, Uri.class) : getIntent().getParcelableExtra(Intent.EXTRA_STREAM);
+            if (uri != null) inputs.add(uri);
+        }
+        if (inputs.isEmpty()) { message.setText("Share JPEG images to GeoRelay from another app."); return; }
+        for (Uri uri : inputs) if (uri == null || !"content".equals(uri.getScheme())) {
+            message.setText("The source app did not provide readable images."); return;
+        }
         new Thread(() -> {
             try {
-                Prepared ready = prepare(uri);
+                ArrayList<File> files = new ArrayList<>();
+                StringBuilder summary = new StringBuilder();
+                for (int i = 0; i < inputs.size(); i++) {
+                    if (isFinishing() || isDestroyed()) throw new IllegalArgumentException("Sharing cancelled.");
+                    final int index = i + 1;
+                    runOnUiThread(() -> message.setText("Preparing image " + index + " of " + inputs.size() + "…"));
+                    Prepared ready;
+                    try { ready = prepare(inputs.get(i)); }
+                    catch (Exception e) { throw new IllegalArgumentException("Image " + index + " of " + inputs.size() + ": " + (e instanceof IllegalArgumentException ? e.getMessage() : "Unable to read or update this JPEG.") + "\nNo images were shared. Correct the selection and try again.", e); }
+                    files.add(ready.file);
+                    summary.append("Image ").append(index).append(": ").append(ready.description).append("\n\n");
+                }
                 runOnUiThread(() -> {
                     if (isFinishing() || isDestroyed()) return;
-                    message.setText(ready.description);
-                    Button share = new Button(this); share.setText("Share image"); share.setStateListAnimator(null);
-                    share.setOnClickListener(v -> share(ready.file)); root.addView(share);
-                    share(ready.file);
+                    message.setText(summary.toString());
+                    Button share = new Button(this); share.setText(files.size() == 1 ? "Share image" : "Share images"); share.setStateListAnimator(null);
+                    share.setOnClickListener(v -> share(files)); root.addView(share);
+                    share(files);
                 });
             } catch (Exception e) {
-                if (output != null) output.delete();
+                for (File file : outputs) file.delete();
                 String detail = e instanceof IllegalArgumentException ? e.getMessage() : "Unable to read or update this JPEG. The source app may have removed access or supplied an unsupported file.";
                 runOnUiThread(() -> { if (!isDestroyed()) message.setText(detail); });
             }
@@ -45,7 +67,8 @@ public final class ShareActivity extends Activity {
         if (!folder.isDirectory() && !folder.mkdirs()) throw new IOException("Cannot create cache");
         File[] old = folder.listFiles();
         if (old != null) for (File f : old) if (System.currentTimeMillis() - f.lastModified() > 7L * 86400000) f.delete();
-        output = File.createTempFile("GeoRelay-", ".jpg", folder);
+        File output = File.createTempFile("GeoRelay-", ".jpg", folder);
+        outputs.add(output);
         try (InputStream in = getContentResolver().openInputStream(uri); OutputStream out = new FileOutputStream(output)) {
             if (in == null) throw new IOException("Unreadable stream");
             byte[] buffer = new byte[65536]; long size = 0; int n;
@@ -78,13 +101,18 @@ public final class ShareActivity extends Activity {
         exif.saveAttributes();
         return new Prepared(output, String.format(Locale.US, "Ready · %.6f, %.6f\nGPS fix: %s\n%.3f seconds after capture · accuracy ±%.0f m%s\nOriginal image retained. No pixel recompression.", fix.lat(), fix.lon(), java.time.Instant.ofEpochMilli(fix.time()), (fix.time() - captured) / 1000.0, fix.accuracy(), offset == null ? "\nCapture timezone assumed: " + ZoneId.systemDefault() : ""));
     }
-    private void share(File file) {
-        Uri uri = FileProvider.getUriForFile(this, getPackageName() + ".files", file);
-        Intent send = new Intent(Intent.ACTION_SEND).setType("image/jpeg").putExtra(Intent.EXTRA_STREAM, uri)
-             .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
-        send.setClipData(ClipData.newRawUri("Geotagged image", uri));
-        Intent chooser = Intent.createChooser(send, "Share geotagged image");
-        if (Build.VERSION.SDK_INT >= 24) chooser.putExtra(Intent.EXTRA_EXCLUDE_COMPONENTS, new ComponentName[]{new ComponentName(this, ShareActivity.class)});
-        try { startActivity(chooser); } catch (ActivityNotFoundException e) { message.setText("No app is available to receive this image."); }
+    private void share(ArrayList<File> files) {
+        ArrayList<Uri> uris = new ArrayList<>();
+        for (File file : files) uris.add(FileProvider.getUriForFile(this, getPackageName() + ".files", file));
+        Intent send = new Intent(uris.size() == 1 ? Intent.ACTION_SEND : Intent.ACTION_SEND_MULTIPLE)
+            .setType("image/jpeg").addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+        if (uris.size() == 1) send.putExtra(Intent.EXTRA_STREAM, uris.get(0));
+        else send.putParcelableArrayListExtra(Intent.EXTRA_STREAM, uris);
+        ClipData clips = ClipData.newRawUri("Geotagged images", uris.get(0));
+        for (int i = 1; i < uris.size(); i++) clips.addItem(new ClipData.Item(uris.get(i)));
+        send.setClipData(clips);
+        Intent chooser = Intent.createChooser(send, "Share geotagged images");
+        chooser.putExtra(Intent.EXTRA_EXCLUDE_COMPONENTS, new ComponentName[]{new ComponentName(this, ShareActivity.class)});
+        try { startActivity(chooser); } catch (ActivityNotFoundException e) { message.setText("No app is available to receive these images."); }
     }
 }
