@@ -64,8 +64,7 @@ public final class RecordingService extends Service implements LocationListener 
             ? PendingIntent.getService(c, 1, new Intent(c, RecordingService.class).setAction(STOP), PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE)
             : PendingIntent.getActivity(c, 2, new Intent(c, MainActivity.class).setAction("app.georelay.START"), PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
         return new Notification.Builder(c, CHANNEL).setSmallIcon(app.georelay.R.drawable.ic_record)
-            .setContentTitle(active ? "GeoRelay · Recording" : "GeoRelay · Stopped")
-            .setContentText(active ? status : "Tap Start to record GPS fixes")
+            .setContentTitle(active ? "Recording" : "Stopped")
             .setContentIntent(content).setOngoing(active).setOnlyAlertOnce(true)
             .addAction(new Notification.Action.Builder(null, active ? "Stop" : "Start", action).build()).build();
     }
