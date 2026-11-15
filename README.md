@@ -7,7 +7,7 @@ Minimal Android GPS recorder and JPEG share intermediary.
 For when your DSLR doesn't track geocoordinates which naturalist observation applications require. 
 1. Run GeoRelay while out photographing wildlife.
 2. Attach your storage card to your Android device.
-3. Share your desired image or images to GeoRelay.
+3. Share your desired images to GeoRelay.
 4. The now geocoordinated images are prepared to be relayed to your observation app.
 
 ## Current boundaries
