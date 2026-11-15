@@ -25,8 +25,10 @@ public final class MainActivity extends Activity {
         super.onCreate(saved); store = new FixStore(this);
         root = new LinearLayout(this); root.setOrientation(LinearLayout.VERTICAL); root.setPadding(24, 16, 24, 16);
         root.setOnApplyWindowInsetsListener((v, insets) -> {
-            android.graphics.Insets bars = Build.VERSION.SDK_INT >= 30 ? insets.getInsets(WindowInsets.Type.systemBars()) : null;
-            if (bars != null) v.setPadding(24 + bars.left, 16 + bars.top, 24 + bars.right, 16 + bars.bottom);
+            if (Build.VERSION.SDK_INT >= 30) {
+                android.graphics.Insets bars = insets.getInsets(WindowInsets.Type.systemBars());
+                v.setPadding(24 + bars.left, 16 + bars.top, 24 + bars.right, 16 + bars.bottom);
+            }
             else v.setPadding(24, 16 + insets.getSystemWindowInsetTop(), 24, 16 + insets.getSystemWindowInsetBottom());
             return insets;
         });
