@@ -81,7 +81,8 @@ public final class ShareActivity extends Activity {
     private void share(File file) {
         Uri uri = FileProvider.getUriForFile(this, getPackageName() + ".files", file);
         Intent send = new Intent(Intent.ACTION_SEND).setType("image/jpeg").putExtra(Intent.EXTRA_STREAM, uri)
-            .setClipData(ClipData.newRawUri("Geotagged image", uri)).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+             .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+        send.setClipData(ClipData.newRawUri("Geotagged image", uri));
         Intent chooser = Intent.createChooser(send, "Share geotagged image");
         if (Build.VERSION.SDK_INT >= 24) chooser.putExtra(Intent.EXTRA_EXCLUDE_COMPONENTS, new ComponentName[]{new ComponentName(this, ShareActivity.class)});
         try { startActivity(chooser); } catch (ActivityNotFoundException e) { message.setText("No app is available to receive this image."); }
