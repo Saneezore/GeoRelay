@@ -18,6 +18,37 @@ public final class RecordingService extends Service implements LocationListener 
     private LocationManager manager;
     private FixStore store;
     private long lastElapsed;
+    private long lastReceived;
+    private long lastRequest;
+    private final Handler healthHandler = new Handler(Looper.getMainLooper());
+    private final Runnable healthCheck = new Runnable() {
+        @Override public void run() {
+            if (!running) return;
+            long now = SystemClock.elapsedRealtime();
+            try {
+                if (!manager.isProviderEnabled(LocationManager.GPS_PROVIDER)) {
+                    status = "GPS is off · enable Location in system settings";
+                } else if (now - lastReceived >= 90_000) {
+                    status = "No recent GPS fix · waiting for satellite reception";
+                    if (now - lastRequest >= 120_000) {
+                        manager.removeUpdates(RecordingService.this);
+                        requestUpdates();
+                    }
+                }
+                refresh();
+                healthHandler.postDelayed(this, 30_000);
+            } catch (SecurityException | IllegalArgumentException e) {
+                status = "Recording stopped · check precise location permission";
+                running = false;
+                stopForeground(STOP_FOREGROUND_REMOVE);
+                stopSelf();
+            }
+        }
+    };
+    private void requestUpdates() {
+        manager.requestLocationUpdates(LocationManager.GPS_PROVIDER, INTERVAL, 0, this, Looper.getMainLooper());
+        lastRequest = SystemClock.elapsedRealtime();
+    }
     static final long INTERVAL = 15_000;
 
     @Override public void onCreate() {
@@ -41,27 +72,30 @@ public final class RecordingService extends Service implements LocationListener 
     @Override public int onStartCommand(Intent intent, int flags, int startId) {
         if (intent != null && STOP.equals(intent.getAction())) {
             running = false; status = "Stopped";
+            healthHandler.removeCallbacks(healthCheck);
             manager.removeUpdates(this);
             stopForeground(STOP_FOREGROUND_DETACH);
             getSystemService(NotificationManager.class).notify(NOTICE, notification(this, false));
             stopSelf(); return START_NOT_STICKY;
         }
         status = "Waiting for GPS · requested every 15 seconds";
-        startForeground(NOTICE, notification(this, true));
-        if (running) return START_NOT_STICKY;
+        if (running) return START_STICKY;
         try {
+            startForeground(NOTICE, notification(this, true));
             if (checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED)
                 throw new SecurityException("Precise location permission required");
             if (!manager.isProviderEnabled(LocationManager.GPS_PROVIDER)) {
                 status = "GPS is off · enable Location in system settings";
             }
-            manager.requestLocationUpdates(LocationManager.GPS_PROVIDER, INTERVAL, 0, this, Looper.getMainLooper());
+            requestUpdates();
             running = true;
+            lastReceived = SystemClock.elapsedRealtime();
+            healthHandler.postDelayed(healthCheck, 30_000);
         } catch (SecurityException | IllegalArgumentException e) {
             status = "Unable to record · check precise location and GPS";
             stopForeground(STOP_FOREGROUND_REMOVE); stopSelf();
         }
-        return START_NOT_STICKY;
+        return running ? START_STICKY : START_NOT_STICKY;
     }
     @Override public void onLocationChanged(Location fix) {
         if (!running || fix.isFromMockProvider() || !fix.hasAccuracy() || fix.getTime() <= 0) return;
@@ -69,6 +103,7 @@ public final class RecordingService extends Service implements LocationListener 
         if (lastElapsed != 0 && elapsed - lastElapsed < INTERVAL) return;
         if (SystemClock.elapsedRealtime() - elapsed > 30_000) return;
         lastElapsed = elapsed;
+        lastReceived = SystemClock.elapsedRealtime();
         store.add(fix);
         status = "GPS fixes saved · every 15 seconds when available";
         getSystemService(NotificationManager.class).notify(NOTICE, notification(this, true));
@@ -78,6 +113,7 @@ public final class RecordingService extends Service implements LocationListener 
     private void refresh() { if (running) getSystemService(NotificationManager.class).notify(NOTICE, notification(this, true)); }
     @Override public void onStatusChanged(String provider, int status, Bundle extras) { }
     @Override public void onDestroy() {
+        healthHandler.removeCallbacks(healthCheck);
         running = false; manager.removeUpdates(this); store.close(); super.onDestroy();
     }
     @Override public IBinder onBind(Intent intent) { return null; }
