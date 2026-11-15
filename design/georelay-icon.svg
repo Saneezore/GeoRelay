@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 108 108">
+  <title>GeoRelay — DSLR camera with map pin</title>
+  <rect width="108" height="108" rx="24" fill="#17251F"/>
+  <path fill="#E7EFE8" d="M28 38h10l5-8h19l5 8h8a7 7 0 0 1 7 7v25a7 7 0 0 1-7 7H28a7 7 0 0 1-7-7V45a7 7 0 0 1 7-7Z"/>
+  <rect x="27" y="33" width="9" height="5" rx="1" fill="#E7EFE8"/>
+  <circle cx="49" cy="57" r="16" fill="#17251F"/>
+  <circle cx="49" cy="57" r="10" fill="#E7EFE8"/>
+  <path fill="#17251F" d="M75 43c-10 0-18 8-18 18 0 12 18 29 18 29s18-17 18-29c0-10-8-18-18-18Z"/>
+  <path fill="#78C99B" d="M75 47c-8 0-14 6-14 14 0 9 14 23 14 23s14-14 14-23c0-8-6-14-14-14Z"/>
+  <circle cx="75" cy="61" r="5" fill="#17251F"/>
+</svg>
